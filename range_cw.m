@@ -11,7 +11,6 @@ function [] = range_cw(L, Tp, MS, MTI)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-
 clear
 clc
 
@@ -71,7 +70,7 @@ switch(MTI)
         x = x - 2;
 end
 
-%% Performing zero padding  and IFFT in time domain matrix
+%% Performing zero padding and IFFT on time domain matrix
 for i = 1:x
     chirp_freq(i,:) = 20*log10(abs(ifft(chirp_time(i,:),L*N)));        % Calculate IFFT using zero padding
 end   
