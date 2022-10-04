@@ -10,20 +10,19 @@ function [] = range_cw(L, Tp, MS, MTI)
 % @ COMMENT: -
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
 clear
 clc
 
 tic
 %% Initialisation Phase
 
-[y,fs] = audioread('Range_Test_File.mp4');
+[y,fs] = audioread('1 person multi speed walk test 1.wav');
 N_t = length(y);                % Total number of samples in positive chrip read file
 data = -y(:,1);                 % Negative of Raw data because of the use of an Inverting Amplifier
 sync = -y(:,2);                 % data array - backscatter information; sync array - sync from modulator
 
-f_start = 2.35*10^9;           % Start frequency
-f_stop = 2.55*10^9;            % Stop frequency
+f_start = 2.405*10^9;           % Start frequency
+f_stop = 2.495*10^9;            % Stop frequency
 c = 2.997*10^8;                 % Speed of Light (m/s)
 
 band = f_stop-f_start;          % Bandwidth of the signal
@@ -35,20 +34,47 @@ T_max = N_t/fs;
 
 %% Variable declarations for non function use
 
-MS = 0;
-MTI = 2;
+MS = 1; 
+MTI = 3;
 L = 4;
+
+%% Raw Data Plot
+figure (1)
+hold on;
+xlim([0.25*10^5 3.5*10^5])
+ylabel('Amplitude')
+xlabel('Data Samples')
+subplot(2,1,1)
+plot(-y(:,1),'b--')
+title('Data Captured')
+subplot(2,1,2)
+plot(y(:,2),'r')
+title('Sync')
+hold off
+
 %% Up-chirp Processing
 
 chirp_logic = (sync > 0);       % Logical Array of each sample when modulator sync amplitude is positive
 x = 0;
-for i = 1:(size(chirp_logic)-N)
+for i = 2:(size(chirp_logic)-N)
     if chirp_logic(i) == 1 && chirp_logic(i-1) == 0 && chirp_logic(i-2) == 0      % To make sure we get a proper chirp in the sample and not a random segment
         x = x + 1;
         chirp_time(x,:) = data(i:i+N-1);
-        time(x) = i/fs;
     end
 end
+cont = reshape(chirp_time,1,[]);
+
+figure (2)
+hold on;
+xlim([0.25*10^5 3.5*10^5])
+ylabel('Amplitude')
+xlabel('Data Samples')
+plot(cont,'b--')
+title('Parsed Data Captured')
+plot(y(:,2),'r')
+legend('Parsed Data','Sync')
+hold off
+
 %% MS Clutter Reduction Step
 if MTI == 0
     switch(MS)
@@ -74,17 +100,19 @@ end
 for i = 1:x
     chirp_freq(i,:) = 20*log10(abs(ifft(chirp_time(i,:),L*N)));        % Calculate IFFT using zero padding
 end   
-fmax = length(chirp_freq)/2;                                         % Nyquist
-chirp_freq_half = chirp_freq(:,1:fmax);                           % Generate the first half part
-chirp_freq_half = chirp_freq_half - max(max(chirp_freq_half)); % Normalization
-range = linspace(0,(range_res*N/2),L*N);          % Create frequency array
-time_array = linspace(0,T_max,x);    % Time Array
 
-figure
-imagesc(range,time_array,chirp_freq_half,[-50,0])
+fmax = length(chirp_freq)/2;                                        % Nyquist
+chirp_freq_half = chirp_freq(:,1:fmax);                             % Generate the first half part
+chirp_freq_half = chirp_freq_half - max(max(chirp_freq_half));      % Normalization
+
+range_t = linspace(0,(range_res*N/2),L*N);            % Create frequency array
+time_array = linspace(0,T_max,x);                   % Time Array
+
+figure(3)
+imagesc(range_t/2,time_array,chirp_freq_half,[-50,0])
 xlabel('Range (m)')
 ylabel('Time (s)')
-xlim([0 100]);
+xlim([0 50]);
 colorbar
 if MS == 0 && MTI == 0
     title('Continuous Wave Radar Range Measurement without Clutter Rejection')
@@ -105,5 +133,83 @@ f_start = f_start/10^9;
 f_stop = f_stop/10^9;
 subtitle(['T_{p} =',num2str(Tp),'ms; f_{start}',num2str(f_start), 'GHz; f_{stop}',num2str(f_stop),'GHz; ',num2str(L), '*N padding'])
 
-hold on
+chirp_freq_half = chirp_freq_half';
+[~,M] = max(chirp_freq_half);
+range = range_t(M);
+range = range(1:length(time_array)); 
+
+r_scat_1 = zeros(1,size(chirp_freq_half,2));
+r_scat_2 = zeros(1,size(chirp_freq_half,2));
+
+for i = 1:size(chirp_freq_half,2)
+    [~,loc,w,p] = findpeaks(chirp_freq_half(:,i));
+    for j = 1:size(loc)-1
+        maxi = j; 
+        for k = j+1:size(loc)
+            if chirp_freq_half(loc(k),i) > chirp_freq_half(loc(maxi),i)
+                maxi = k;
+            end
+        end
+        if maxi ~= j
+            temp = loc(maxi);
+            loc(maxi) = loc(j);
+            loc(j)=temp;
+            temp = w(maxi);
+            w(maxi) = w(j);
+            w(j)=temp;
+            temp = p(maxi);
+            p(maxi) = p(j);
+            p(j)=temp;
+        end
+    end
+    maxi = 2;
+    for j =3:13 
+        if w(j)*p(j) > w(maxi)*p(maxi)
+            maxi = j;
+        end
+    end
+    r_scat_1(1,i) = range_t(loc(1));
+    r_scat_2(1,i) = range_t(loc(maxi));
+end
+
+windowSize = 10; 
+b = (1/windowSize)*ones(1,windowSize);
+a = 1;
+
+range = filter(b,a,range);
+r_scat_1 = filter(b,a,r_scat_1);
+r_scat_2 = filter(b,a,r_scat_2);
+
+for i=2:2:length(range)
+    velocity(i)=(range(1,i)-range(1,i-1))/(time_array(i)-time_array(i-1));
+end
+time_array_v = linspace(0,T_max,length(velocity));
+windowSize = 50; 
+b = (1/windowSize)*ones(1,windowSize);
+velocity = filter(b,a,velocity);
+
+hold off
+figure(4)
+plot(time_array,range)
+xlabel("Time [s]")
+ylabel("Range (m)")
+ylim([0 40])
+xlim([0 25])
+title("Range vs Time Graph")
+
+figure(5)
+plot(time_array,r_scat_1,time_array,r_scat_2);
+xlabel("Time [s]")
+ylabel("Range (m)")
+ylim([0 40])
+title("Range vs Time Graph")
+legend('Stongest', 'Second Strongest')
+hold off
+
+figure(6)
+plot(time_array_v,velocity);
+ylabel('Velocity(m/s)');
+xlim([0 25]);
+xlabel('Time(s)')
+title("Velocity (finite difference) vs Time Graph")
 toc
