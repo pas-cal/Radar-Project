@@ -1,0 +1,59 @@
+clc 
+clear 
+
+%% Initialisation
+
+t_array = [];
+v_array = [];
+y = []; 
+
+Fs = 44100 ; 
+nBits = 16 ; 
+nChannels = 2 ; 
+ID = 1;
+T_s = 1;
+
+input_stream = audiorecorder(Fs,nBits,nChannels,ID);
+flag = 1;
+x = 0;
+while(flag == 1)
+    x = x + T_s; 
+    recordblocking(input_stream,T_s);
+    audioData = input_stream.getaudiodata;
+    y = [y;audioData(:,1)];
+
+    
+    [time_space, v_space] = velocity_cw(4, 0.2, 1, 2, y, Fs);
+    t_array = [t_array;time_space'];
+    v_array = [v_array; v_space'];
+    
+    figure(1)
+    plot(t_array,v_array,'.')
+    ylim([0 5])
+    xlabel("Time [s]")
+    ylabel("Velocity (m/s)")
+
+
+        ButtonHandle = uicontrol('Style', 'PushButton', 'String', 'Stop Measurement','Callback', 'delete(gcbf)');
+    uicontrol(ButtonHandle)
+      if ~ishghandle(ButtonHandle)
+          flag = 0;
+          disp('Loop stopped by user');
+          break;
+      end
+end
+
+figure(2)
+plot(y(:,1))
+title('Sampled Signal')
+xlabel('Sample Number')
+
+%% Plot All Sampled Data
+figure(3)
+plot(t_array,v_array)
+xlabel("Time [s]")
+ylabel("Range (m)")
+ylim([0 40])
+title("Final Recorded Signal")
+
+audiowrite('realtime.wav',v_array,fs)
